@@ -1,6 +1,6 @@
 # breakout-cljs
 
-FIXME: Write a one-line description of your library/project.
+A simple Breakout game written in ClojureScript. This project is designed to experiment the the Entity Component System architecture for game development. 
 
 ## Overview
 
@@ -31,9 +31,3 @@ To create a production build run:
 
 And open your browser in `resources/public/index.html`. You will not
 get live reloading, nor a REPL. 
-
-## License
-
-Copyright © 2014 FIXME
-
-Distributed under the Eclipse Public License either version 1.0 or (at your option) any later version.
