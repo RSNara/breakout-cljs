@@ -12,6 +12,9 @@
 (defonce ^:const width (.-width canvas))
 (defonce ^:const height (.-height canvas))
 
+(defprotocol Mortal
+  (alive? [this]))
+
 (defprotocol Moveable
   (move [this t]))
 
@@ -20,13 +23,18 @@
   (intersect [this other]))
 
 (defn trace [ result ] (do (println result) result))
+(defn floor [x] (.floor js/Math x))
 
-(defrecord Block [dim p v a]
+(defrecord Block [dim p v a health]
+  Mortal
+    (alive? [this]
+      (-> this :health pos?))
+
   Moveable
     (move [this t]
       (let [p' (map + (map #(* 0.5 t %) a) (map #(* t %) v) p)
             v' (map + (map #(* t %) a) v)]
-        (Block. dim p' v' a)))
+        (merge this {:p p' :v v'})))
 
   Collidable
     (collide [this other]
@@ -34,10 +42,11 @@
         this
         (let [intersection (intersect this other)
               min-dimension (apply min intersection)
-              index (.indexOf intersection min-dimension)]
+              min-index (.indexOf intersection min-dimension)]
           (if (pos? min-dimension)
-            (let [v' (map-indexed #(if (= index %1) (unchecked-negate %2) %2) v)]
-              (Block. dim p v' a))
+            (let [health' (dec (:health this))
+                  v' (map-indexed #(if (= min-index %1) (unchecked-negate %2) %2) v)]
+              (merge this {:v v' :health health'}))
             this))))
     (intersect [this other]
       (let [min-p (map max p (:p other))
@@ -51,19 +60,31 @@
         paddle-dim (:dim paddle)
         ball-dim (map #(identity 10) paddle-dim)
         ball-p (map - paddle-p ball-dim)
-        ball-v (map #(identity 1) (:v paddle))
-        ball-a (map #(identity 0) (:a paddle))]
-    (Block. ball-dim ball-p ball-v ball-a)))
+        ball-v (map #(identity 4) (:v paddle))
+        ball-a (map #(identity 0) (:a paddle))
+        ball-health js/Infinity]
+    (Block. ball-dim ball-p ball-v ball-a ball-health)))
 
 (defn create-paddle []
-  (Block. [40 10] [40 (- height 10 5)] [0 0] [0 0]))
+  (Block. [40 10] [40 (- height 10 5)] [0 0] [0 0] js/Infinity))
+
+(defn get-block-dim [gutter total-space num]
+  (/ (- total-space (* gutter (inc num))) num))
+
+(defn get-block-p [gutter index dim]
+  (+ (* (inc index) gutter) (* index dim)))
+
+(defn create-blocks [ columns rows]
+  (let [gutter 10
+        nums [columns rows]
+        container [width (/ height 3)]
+        size (map (partial get-block-dim gutter) container nums)
+        get-block-p-with-gutter (partial get-block-p gutter)]
+    (for [i (range 0 columns) j (range 0 rows)]
+      (Block. size (map get-block-p-with-gutter [i j] size) [0 0] [0 0] 2))))
 
 (defonce game-state (atom (let [paddle (create-paddle)]
-                            {:blocks [(Block. [20 20] [0 10] [0 0] [0 0])
-                                      (Block. [20 20] [25 10] [0 0] [0 0])
-                                      (Block. [20 20] [50 10] [0 0] [0 0])
-                                      (Block. [20 20] [75 10] [0 0] [0 0])
-                                      (Block. [20 20] [450 10] [0 0] [0 0])]
+                            {:blocks (create-blocks 8 6)
                              :paddle paddle
                              :ball (trace (create-ball paddle))
                              :keys #{}})))
@@ -81,7 +102,8 @@
   (let [blocks (:blocks state)
         paddle (:paddle state)
         ball (:ball state)]
-    (merge state {:ball (-> (reduce collide ball blocks)
+    (merge state {:blocks (map #(collide % ball) blocks)
+                  :ball (-> (reduce collide ball blocks)
                             (collide paddle))})))
 
 (defn clamp [min max x]
@@ -118,12 +140,12 @@
     (merge state {:ball (bounce-block-off-world-edges ball)})))
 
 (defn render-block! [context block]
-  (let [[x y] (:p block)
-        [width height] (:dim block)]
+  (let [[x y] (map floor (:p block))
+        [width height] (map floor (:dim block))]
     (.fillRect context x y width height)))
 
 (defn PaddleMover [state]
-  (let [speed 2
+  (let [speed 4
         keys-pressed (:keys state)
         paddle (:paddle state)
         v (:v paddle)]
@@ -133,36 +155,28 @@
             :else (assoc paddle :v (cons 0 (rest v))))
          (assoc state :paddle))))
 
+(defn DeadBlockRemover [state]
+  (->> (:blocks state)
+       (filter alive?)
+       (assoc state :blocks)))
+
 (defn Renderer! [state]
   (let [blocks (:blocks state)
         paddle (:paddle state)
         ball (:ball state)
         context (.getContext canvas "2d")]
-    (aset context "fillStyle" "#fff")
-    (.fillRect context 0 0 width height)
+    (.clearRect context 0 0 width height)
     (aset context "fillStyle" "#000")
     (doseq [block blocks] (render-block! context block))
     (render-block! context paddle)
     (render-block! context ball))
   state)
 
-(defonce init (letfn [(get-code [event]
-                        (-> event (aget "event_") (aget "code") keyword))]
-                (events/listen js/window
-                               (.-KEYDOWN events/EventType)
-                               (fn [event]
-                                 (swap! game-state update :keys #(conj % (get-code event)))
-                                 (.preventDefault event)))
-                (events/listen js/window
-                               (.-KEYUP events/EventType)
-                               (fn [event]
-                                 (swap! game-state update :keys #(disj % (get-code event)))
-                                 (.preventDefault event)))))
-
 (defn game-loop [now]
   (.requestAnimationFrame js/window game-loop)
   (->> @game-state
        Collider
+       DeadBlockRemover
        Mover
        PaddleMover
        WorldEdgeBouncer
@@ -170,8 +184,22 @@
        Renderer!
        (reset! game-state)))
 
+(defn init []
+  (letfn [(get-code [event]
+            (-> event (aget "event_") (aget "code") keyword))]
+    (events/listen js/window
+                   (.-KEYDOWN events/EventType)
+                   (fn [event]
+                     (swap! game-state update :keys #(conj % (get-code event)))
+                     (.preventDefault event)))
+    (events/listen js/window
+                   (.-KEYUP events/EventType)
+                   (fn [event]
+                     (swap! game-state update :keys #(disj % (get-code event)))
+                     (.preventDefault event)))
+    (game-loop (.now js/performance))))
 
-(game-loop (.now js/performance))
+(defonce start (init))
 
 (defn on-js-reload [])
   ;; optionally touch your app-state to force rerendering depending on
