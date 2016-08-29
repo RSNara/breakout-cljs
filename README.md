@@ -3,7 +3,7 @@
 Breakout, implemented in ClojureScript.
 
 ## Goals
-This was created to play with a Clojure-esque style of state management for games. Inspiration was also taken from the Entity Component System design pattern when deciding on the game's architecture.
+I made this to experiment with a Clojure-esque style of state management for games. Inspiration was also taken from the Entity Component System design pattern when deciding on the game's architecture.
 
 ## Gameplay
 
