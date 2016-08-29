@@ -1,10 +1,13 @@
 # breakout-cljs
 
-A simple Breakout game written in ClojureScript. This project is designed to experiment the the Entity Component System architecture for game development. 
+Breakout, implemented in ClojureScript.
 
-## Overview
+## Gameplay
 
-FIXME: Write a paragraph about the library/project and highlight its goals.
+[![YouTube video](http://i.imgur.com/Lusaztg.gif)](https://www.youtube.com/embed/SNkytQ4Yv5k)
+
+## Goals
+This was created to play with a Clojure-esque style of state management for games. Inspiration was also taken from the Entity Component System design pattern when deciding on the game's architecture. 
 
 ## Setup
 

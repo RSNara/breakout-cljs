@@ -1,6 +1,6 @@
 (ns breakout-cljs.core
   (:require [breakout-cljs.util :refer [clamp abs trace floor]]
-            [breakout-cljs.constant :refer [canvas width height]]
+            [breakout-cljs.constant :refer [canvas width height gutter block-health block-offset]]
             [breakout-cljs.protocol :refer [Mortal Moveable Collidable intersect move collide alive?]]
             [breakout-cljs.entity :as Entity]
             [breakout-cljs.system :as System]
@@ -8,54 +8,63 @@
 
 (enable-console-print!)
 
-(println "This text is printed from src/breakout-cljs/core.cljs. Go ahead and edit it and see reloading in action.")
-
-
 (defn create-ball [paddle]
   (let [paddle-p (:p paddle)
         paddle-dim (:dim paddle)
         ball-dim (map #(identity 10) paddle-dim)
-        ball-p (map - paddle-p ball-dim)
+        ball-p (map - paddle-p (cons 0 (rest ball-dim)))
         ball-v (map #(identity 4) (:v paddle))
         ball-a (map #(identity 0) (:a paddle))
         ball-health js/Infinity]
     (Entity/Block. ball-dim ball-p ball-v ball-a ball-health)))
 
 (defn create-paddle []
-  (Entity/Block. [40 10] [40 (- height 10 5)] [0 0] [0 0] js/Infinity))
+  (Entity/Block. [80 10] [40 (- height 10 5)] [0 0] [0 0] js/Infinity))
 
-(defn get-block-dim [gutter total-space num]
+(defn get-block-dim [total-space num]
   (/ (- total-space (* gutter (inc num))) num))
 
-(defn get-block-p [gutter index dim]
+(defn get-block-p [index dim]
   (+ (* (inc index) gutter) (* index dim)))
 
 (defn create-blocks [ columns rows]
-  (let [gutter 10
-        nums [columns rows]
+  (let [nums [columns rows]
         container [width (/ height 3)]
-        size (map (partial get-block-dim gutter) container nums)
-        get-block-p-with-gutter (partial get-block-p gutter)]
-    (for [i (range 0 columns) j (range 0 rows)]
-      (Entity/Block. size (map get-block-p-with-gutter [i j] size) [0 0] [0 0] 2))))
+        size (map get-block-dim container nums)]
+    (for [i (range 0 columns)
+          j (range 0 rows)]
+      (Entity/Block. size (map get-block-p [i j] size) [0 0] [0 0] block-health))))
 
-(defonce game-state (atom (let [paddle (create-paddle)]
-                            {:blocks (create-blocks 8 6)
-                             :paddle paddle
-                             :ball (trace (create-ball paddle))
-                             :keys #{}})))
+(defn translate-blocks [blocks p]
+  (map #(update % :p (partial map + p)) blocks))
+
+(defn initial-state []
+  (let [paddle (create-paddle)]
+    {:blocks (translate-blocks (create-blocks 8 6) [0 block-offset])
+     :paddle paddle
+     :ball (create-ball paddle)
+     :keys #{}
+     :lives 3
+     :score 0}))
+
+(defonce game-state (atom (initial-state)))
 
 (defn game-loop [now]
   (.requestAnimationFrame js/window game-loop)
-  (->> @game-state
-       System/Collider
-       System/DeadBlockRemover
-       System/Mover
-       System/PaddleMover
-       System/WorldEdgeBouncer
-       System/WorldClamper
-       System/Renderer!
-       (reset! game-state)))
+  (let [state @game-state]
+    (if (-> state :lives pos?)
+      (->> state
+           System/Collider
+           System/ScoreUpdater
+           System/DeadBlockRemover
+           System/Mover
+           System/GameLifeDecrementer
+           System/PaddleMover
+           System/WorldEdgeBouncer
+           System/WorldClamper
+           System/Renderer!
+           (reset! game-state))
+      (reset! game-state (initial-state)))))
 
 (defn init []
   (letfn [(get-code [event]
