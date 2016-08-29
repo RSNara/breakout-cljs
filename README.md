@@ -2,12 +2,12 @@
 
 Breakout, implemented in ClojureScript.
 
+## Goals
+This was created to play with a Clojure-esque style of state management for games. Inspiration was also taken from the Entity Component System design pattern when deciding on the game's architecture.
+
 ## Gameplay
 
 [![YouTube video](http://i.imgur.com/Lusaztg.gif)](https://www.youtube.com/embed/SNkytQ4Yv5k)
-
-## Goals
-This was created to play with a Clojure-esque style of state management for games. Inspiration was also taken from the Entity Component System design pattern when deciding on the game's architecture. 
 
 ## Setup
 
@@ -33,4 +33,4 @@ To create a production build run:
     lein do clean, cljsbuild once min
 
 And open your browser in `resources/public/index.html`. You will not
-get live reloading, nor a REPL. 
+get live reloading, nor a REPL.
